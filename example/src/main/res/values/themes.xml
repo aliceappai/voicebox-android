@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Material3 base so both the Compose API and the View-side
+         BottomSheetDialogFragment API render correctly. -->
+    <style name="Theme.VoiceboxExample" parent="Theme.Material3.DayNight.NoActionBar" />
+</resources>
