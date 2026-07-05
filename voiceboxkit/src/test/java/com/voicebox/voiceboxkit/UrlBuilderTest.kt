@@ -50,6 +50,20 @@ class UrlBuilderTest {
     }
 
     @Test
+    fun `Overlay mode adds overlay=1`() {
+        val vb = VoiceboxView(handle = "test")
+        vb.presentationMode = VoiceboxPresentationMode.Overlay
+        assertEquals("1", vb.buildUrl().getQueryParameter("overlay"))
+    }
+
+    @Test
+    fun `non-overlay mode omits overlay param`() {
+        val vb = VoiceboxView(handle = "test")
+        vb.presentationMode = VoiceboxPresentationMode.BottomSheet
+        assertNull(vb.buildUrl().getQueryParameter("overlay"))
+    }
+
+    @Test
     fun `custom params are appended`() {
         val vb = VoiceboxView(
             handle = "alice-feedback",

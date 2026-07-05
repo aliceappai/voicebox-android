@@ -49,4 +49,18 @@ sealed class VoiceboxPresentationMode {
         /** Fraction clamped to [0.1, 1.0]. */
         val clamped: Float get() = fraction.coerceIn(0.1f, 1.0f)
     }
+
+    /**
+     * Transparent, shaped "floating" overlay.
+     *
+     * Instead of a rectangular sheet, the recorder's own head-and-shoulders
+     * silhouette (rendered transparently via the web `overlay=1` mode) floats
+     * above a dimmed backdrop. It's centred at card width, slides up from the
+     * bottom, and grows/shrinks from the bottom as the web content changes.
+     * Tapping the dimmed area — including the transparent corners beside the
+     * head — dismisses; a downward swipe dismisses too.
+     *
+     * Mirrors iOS `.overlay`.
+     */
+    object Overlay : VoiceboxPresentationMode()
 }

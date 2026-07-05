@@ -104,4 +104,17 @@ class PresentationModeTest {
         vb.presentationMode = VoiceboxPresentationMode.CustomFraction(0.75f)
         assertEquals(VoiceboxPresentationMode.CustomFraction(0.75f), vb.presentationMode)
     }
+
+    @Test
+    fun `Overlay mode exists, is a distinct object, and assigns`() {
+        assertEquals(VoiceboxPresentationMode.Overlay, VoiceboxPresentationMode.Overlay)
+        assertNotEquals(
+            VoiceboxPresentationMode.Overlay as VoiceboxPresentationMode,
+            VoiceboxPresentationMode.FitContent,
+        )
+
+        val vb = VoiceboxView(handle = "test")
+        vb.presentationMode = VoiceboxPresentationMode.Overlay
+        assertEquals(VoiceboxPresentationMode.Overlay, vb.presentationMode)
+    }
 }

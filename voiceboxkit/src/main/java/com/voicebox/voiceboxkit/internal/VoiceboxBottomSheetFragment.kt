@@ -52,6 +52,14 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
     private lateinit var behavior: BottomSheetBehavior<FrameLayout>
     private var dismissDispatched = false
 
+    // Overlay presentation (VoiceboxPresentationMode.Overlay): a card-width,
+    // bottom-anchored, transparent floating shape instead of a rectangular sheet.
+    private val isOverlay: Boolean
+        get() = voiceboxConfig.presentationMode == VoiceboxPresentationMode.Overlay
+    private var overlayScrim: View? = null
+    private var overlayContainer: VoiceboxSilhouetteLayout? = null
+    private var overlaySlidIn = false
+
     // Mirrors iOS requestMicrophonePermission() — proactively request RECORD_AUDIO before
     // loading so the native OS dialog appears when the sheet opens, not mid-recording.
     private val requestMicLauncher = registerForActivityResult(
@@ -117,8 +125,20 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT,
         ))
+        overlayScrim = scrim
 
-        // Sheet container: FrameLayout with BottomSheetBehavior attached via layout params
+        if (isOverlay) {
+            buildOverlayTree(ctx, root)
+        } else {
+            buildSheetTree(ctx, root)
+        }
+
+        return root
+    }
+
+    // Rectangular bottom sheet (all modes except Overlay): FrameLayout with
+    // BottomSheetBehavior attached via layout params.
+    private fun buildSheetTree(ctx: Context, root: CoordinatorLayout) {
         sheetContainer = FrameLayout(ctx)
         val sheetParams = CoordinatorLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -156,12 +176,74 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
                 setMargins(0, margin, margin, 0)
             })
         }
+    }
 
-        return root
+    // Overlay mode: a card-width, bottom-anchored, transparent silhouette host —
+    // no sheet card, no corner clip. Slides up / grows / shrinks / swipes to
+    // dismiss are driven manually (not BottomSheetBehavior) so the height tracks
+    // the web content exactly.
+    private fun buildOverlayTree(ctx: Context, root: CoordinatorLayout) {
+        val density = resources.displayMetrics.density
+        val screenW = resources.displayMetrics.widthPixels
+        val cardW = (VoiceboxOverlaySilhouette.CONTENT_WIDTH_DP * density).toInt()
+            .coerceAtMost(screenW - ctx.dpToPx(24f))
+
+        val overlay = VoiceboxSilhouetteLayout(ctx).apply {
+            silhouette = VoiceboxOverlaySilhouette.forDensity(density)
+            onOutsideTap = { dismiss() }
+            onSwipeDownDismiss = { dismiss() }
+            canSwipeToDismiss = { this@VoiceboxBottomSheetFragment.webView.scrollY == 0 }
+        }
+        root.addView(overlay, CoordinatorLayout.LayoutParams(cardW, ctx.dpToPx(420f)).apply {
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            bottomMargin = ctx.dpToPx(8f)
+        })
+        // sheetContainer is used by shared code paths (skeleton parenting etc.).
+        sheetContainer = overlay
+        overlayContainer = overlay
+
+        webView = WebView(ctx).apply { setBackgroundColor(Color.TRANSPARENT) }
+        overlay.addView(webView, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+        ))
+
+        skeletonView = VoiceboxSkeletonView(ctx)
+        overlay.addView(skeletonView, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+        ))
+
+        offlineView = VoiceboxOfflineView(ctx, onRetry = ::loadUrl)
+        offlineView.visibility = View.GONE
+        overlay.addView(offlineView, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+        ))
+
+        if (voiceboxConfig.showCloseButton) {
+            closeButton = buildCloseButton(ctx)
+            val sizePx = ctx.dpToPx(voiceboxConfig.theme.resolvedCloseButtonSize)
+            val margin = ctx.dpToPx(12f)
+            overlay.addView(closeButton, FrameLayout.LayoutParams(sizePx, sizePx).apply {
+                gravity = Gravity.TOP or Gravity.END
+                // Push below the head so it sits over the card, inside the silhouette.
+                setMargins(0, ctx.dpToPx(VoiceboxOverlaySilhouette.CARD_TOP_DP + 8f), margin, 0)
+            })
+        }
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
+        if (isOverlay) {
+            setupWebView()
+            wrapListenerForAutoDismiss()
+            slideInOverlay()
+            skeletonView.startAnimating()
+            requestMicThenLoad()
+            return
+        }
 
         behavior = (sheetContainer.layoutParams as CoordinatorLayout.LayoutParams)
             .behavior as BottomSheetBehavior<FrameLayout>
@@ -185,6 +267,50 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
 
         skeletonView.startAnimating()
         requestMicThenLoad()
+    }
+
+    // MARK: - Overlay animation & sizing
+
+    private fun slideInOverlay() {
+        val container = overlayContainer ?: return
+        val scrim = overlayScrim
+        scrim?.alpha = 0f
+        container.post {
+            val distance = container.height.toFloat().coerceAtLeast(requireContext().dpToPx(300f).toFloat())
+            container.translationY = distance
+            container.animate()
+                .translationY(0f)
+                .setDuration(340)
+                .withStartAction { overlaySlidIn = true }
+                .start()
+            scrim?.animate()?.alpha(1f)?.setDuration(340)?.start()
+        }
+    }
+
+    private fun updateOverlayHeight(heightDp: Float) {
+        val container = overlayContainer ?: return
+        val ctx = context ?: return
+        val maxPx = resources.displayMetrics.heightPixels - ctx.dpToPx(48f)
+        val targetPx = ctx.dpToPx(heightDp).coerceIn(ctx.dpToPx(120f), maxPx)
+        val lp = container.layoutParams
+        if (lp.height == targetPx) return
+        lp.height = targetPx
+        container.layoutParams = lp
+    }
+
+    private fun animateOverlayOutAndDismiss() {
+        val container = overlayContainer
+        if (container == null) {
+            dispatchDismiss()
+            return
+        }
+        val distance = container.height.toFloat() + requireContext().dpToPx(8f)
+        overlayScrim?.animate()?.alpha(0f)?.setDuration(260)?.start()
+        container.animate()
+            .translationY(distance)
+            .setDuration(260)
+            .withEndAction { dispatchDismiss() }
+            .start()
     }
 
     override fun onDestroyView() {
@@ -219,7 +345,11 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
     // MARK: - Dismiss
 
     internal fun dismiss() {
-        behavior.state = BottomSheetBehavior.STATE_HIDDEN
+        if (isOverlay) {
+            animateOverlayOutAndDismiss()
+        } else {
+            behavior.state = BottomSheetBehavior.STATE_HIDDEN
+        }
     }
 
     private fun dispatchDismiss() {
@@ -349,6 +479,10 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
                 behavior.state = BottomSheetBehavior.STATE_HALF_EXPANDED
                 behavior.skipCollapsed = true
             }
+            VoiceboxPresentationMode.Overlay -> {
+                // Overlay never reaches here — it uses the manual bottom-anchored
+                // path (buildOverlayTree / slideInOverlay), not BottomSheetBehavior.
+            }
         }
 
         applySheetCornerRadius()
@@ -389,9 +523,10 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
         skeletonView.stopAnimating()
         offlineView.visibility = View.GONE
 
-        if (voiceboxConfig.presentationMode == VoiceboxPresentationMode.FitContent) {
+        if (voiceboxConfig.presentationMode == VoiceboxPresentationMode.FitContent || isOverlay) {
             // Measure the document scroll height (CSS px ≈ dp when viewport=device-width)
-            // and resize the sheet immediately without depending on a JS message from the page.
+            // for an immediate first size. Overlay then receives continuous updates as
+            // the web streams height on every ResizeObserver change.
             webView.evaluateJavascript(
                 "(function(){return Math.max(" +
                     "document.body ? document.body.scrollHeight : 0," +
@@ -419,6 +554,10 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
     }
 
     private fun handleContentHeight(heightDp: Float) {
+        if (isOverlay) {
+            updateOverlayHeight(heightDp)
+            return
+        }
         if (voiceboxConfig.presentationMode != VoiceboxPresentationMode.FitContent) return
         val maxPx = resources.displayMetrics.heightPixels
         val heightPx = requireContext().dpToPx(heightDp).coerceAtMost(maxPx)

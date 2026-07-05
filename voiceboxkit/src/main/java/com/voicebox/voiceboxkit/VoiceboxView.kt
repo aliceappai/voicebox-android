@@ -48,7 +48,15 @@ class VoiceboxView(
     // MARK: - URL Construction
 
     /** Builds the full Voicebox URL with params and UTM tags. */
-    fun buildUrl(): Uri = VoiceboxUrlBuilder.build(handle, params)
+    fun buildUrl(): Uri {
+        // Overlay presentation needs the transparent, self-sizing web mode.
+        val effectiveParams = if (presentationMode == VoiceboxPresentationMode.Overlay) {
+            params + ("overlay" to "1")
+        } else {
+            params
+        }
+        return VoiceboxUrlBuilder.build(handle, effectiveParams)
+    }
 
     // MARK: - View API Presentation (Phase 3)
 
@@ -70,6 +78,12 @@ class VoiceboxView(
     /** Convenience: present as a full-screen modal. */
     fun presentFullScreen(activity: FragmentActivity) {
         presentationMode = VoiceboxPresentationMode.FullScreen
+        present(activity)
+    }
+
+    /** Convenience: present as a transparent, shaped floating overlay. */
+    fun presentAsOverlay(activity: FragmentActivity) {
+        presentationMode = VoiceboxPresentationMode.Overlay
         present(activity)
     }
 }

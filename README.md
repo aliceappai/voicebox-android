@@ -131,6 +131,7 @@ Choose how the sheet is presented by setting `presentationMode` on your state or
 | `FitContent` | Sheet height auto-fits the web content (adjusted via JS bridge). |
 | `Custom(height)` | Fixed height in dp. |
 | `CustomFraction(fraction)` | Fraction of screen height (0.0–1.0). |
+| `Overlay` | Transparent, shaped "floating" recorder over a dimmed backdrop: head-and-shoulders silhouette (via web `overlay=1`), card-width and centred, slides up from the bottom, grows/shrinks with its content, and dismisses on backdrop tap (including the transparent corners beside the head) or a downward swipe. |
 
 ### Compose
 
@@ -142,6 +143,7 @@ state.presentationMode = VoiceboxPresentationMode.FullScreen
 state.presentationMode = VoiceboxPresentationMode.FitContent
 state.presentationMode = VoiceboxPresentationMode.Custom(height = 520f)
 state.presentationMode = VoiceboxPresentationMode.CustomFraction(fraction = 0.65f)
+state.presentationMode = VoiceboxPresentationMode.Overlay
 
 state.isPresented = true
 ```

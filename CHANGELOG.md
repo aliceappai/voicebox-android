@@ -7,6 +7,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- `Overlay` presentation mode: a transparent, shaped "floating" recorder. The
+  head-and-shoulders silhouette (via the web `overlay=1` mode) floats over a
+  dimmed backdrop instead of a rectangular sheet — card-width and centred, it
+  slides up from the bottom, grows/shrinks from the bottom as the web content
+  changes, and dismisses on backdrop tap (including the transparent corners
+  beside the head) or a downward swipe. Use `presentationMode = Overlay` or
+  `presentAsOverlay(activity)`. Mirrors iOS `.overlay`.
+
+---
+
 ## [1.0.0] — 2026-06-29
 
 Initial release of VoiceboxKit for Android, feature-parity with VoiceboxKit iOS 1.0.3.
