@@ -152,6 +152,10 @@ private fun ExampleScreen(activity: AppCompatActivity) {
                 sheetState.presentationMode = VoiceboxPresentationMode.CustomFraction(fraction = 0.7f)
                 sheetState.isPresented = true
             }
+            ModeButton("Overlay (floating)") {
+                sheetState.presentationMode = VoiceboxPresentationMode.Overlay
+                sheetState.isPresented = true
+            }
 
             Spacer(Modifier.height(8.dp))
             HorizontalDivider()
@@ -168,6 +172,17 @@ private fun ExampleScreen(activity: AppCompatActivity) {
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("Bottom Sheet (View API)")
+            }
+
+            OutlinedButton(
+                onClick = {
+                    VoiceboxView(handle = HANDLE)
+                        .also { it.listener = listener }
+                        .presentAsOverlay(activity)
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Overlay (View API)")
             }
 
             Spacer(Modifier.height(16.dp))
