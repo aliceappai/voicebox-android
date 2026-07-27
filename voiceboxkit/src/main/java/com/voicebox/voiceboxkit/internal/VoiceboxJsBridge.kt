@@ -18,6 +18,7 @@ internal class VoiceboxJsBridge(
     private val voiceboxView: VoiceboxView,
     private val onBgColor: (String) -> Unit,
     private val onContentHeight: (Float) -> Unit,
+    private val onDismissRequested: () -> Unit,
     private val mainHandler: Handler,
 ) {
     @JavascriptInterface
@@ -43,6 +44,15 @@ internal class VoiceboxJsBridge(
         }.trim()
 
         VoiceboxLog.d("voiceboxEvent: $type")
+
+        // Dismiss is handled before the listener guard: it's a presentation command from the
+        // injected tap-outside handler, not a business callback, so it must still work when
+        // the caller attached no listener.
+        if (type == VoiceboxPageChrome.DISMISS_EVENT) {
+            onDismissRequested()
+            return
+        }
+
         val listener = voiceboxView.listener ?: return
         when (type) {
             "recordingComplete" -> listener.onRecordingComplete(voiceboxView)

@@ -35,6 +35,22 @@ class VoiceboxState(
     /** Whether to show the built-in close button. Default: `true`. */
     var showCloseButton: Boolean = true
 
+    /**
+     * Hides the recorder page's own footer and makes its background transparent, so only
+     * the avatar badge + card show against the sheet's background. Default `false`.
+     *
+     * See [VoiceboxView.hidePageChrome] for the DOM-coupling caveat.
+     */
+    var hidePageChrome: Boolean = false
+
+    /**
+     * Dismisses the presentation when the user taps outside the recorder card. Default `false`.
+     *
+     * See [VoiceboxView.dismissOnTapOutside] — pair this with `showCloseButton = false` and a
+     * transparent theme background, or system back becomes the only way to close.
+     */
+    var dismissOnTapOutside: Boolean = false
+
     /** Lifecycle listener for this presentation. */
     var listener: VoiceboxListener? = null
 
@@ -54,6 +70,8 @@ class VoiceboxState(
         val vb = VoiceboxView(handle = handle, params = params, theme = theme)
         vb.presentationMode = presentationMode
         vb.showCloseButton = showCloseButton
+        vb.hidePageChrome = hidePageChrome
+        vb.dismissOnTapOutside = dismissOnTapOutside
         vb.autoGrantMicPermission = autoGrantMicPermission
         vb.listener = object : VoiceboxListener {
             override fun onRecordingComplete(voiceboxView: VoiceboxView) {

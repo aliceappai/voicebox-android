@@ -30,6 +30,37 @@ class VoiceboxView(
     /** Whether to show the close button overlay. Default: `true`. */
     var showCloseButton: Boolean = true
 
+    /**
+     * When `true`, injects CSS that hides the recorder page's own footer (the
+     * "Secure voicebox / Privacy / Terms" row) and makes its body/page background
+     * transparent, so only the avatar badge + card are visible — letting the sheet's own
+     * background show through everywhere else. Default is `false` (the page renders
+     * exactly as vbx-web serves it).
+     *
+     * Mirrors iOS `VoiceboxView.hidePageChrome`.
+     *
+     * Note: this is a client-side CSS injection scoped to VoiceboxKit's WebView only — it
+     * does not change the page for any other embed (desktop web, iOS). It also depends on
+     * vbx-web's current DOM structure (`#recorder-footer`, `#main`); if that markup
+     * changes, this silently stops matching. See [VoiceboxPageChrome].
+     */
+    var hidePageChrome: Boolean = false
+
+    /**
+     * When `true`, a tap anywhere outside the recorder card (and outside the Voicebox logo)
+     * dismisses the presentation. Default is `false`.
+     *
+     * Intended for presentations that hide [showCloseButton] and use a transparent
+     * [VoiceboxTheme.backgroundColor]: the area around the card then shows the dimmed app, so
+     * users expect tapping it to close — but the sheet's WebView covers the scrim, so the
+     * scrim's own tap-to-dismiss never fires. Without this, system back is the only way out.
+     *
+     * Implemented by injecting a click listener into the page (see [VoiceboxPageChrome]), so it
+     * carries the same vbx-web DOM coupling as [hidePageChrome] — it keys off `#recorder-card`
+     * and `#voicebox-logo`.
+     */
+    var dismissOnTapOutside: Boolean = false
+
     /** Listener for lifecycle events (recording complete, dismiss, error). */
     var listener: VoiceboxListener? = null
 

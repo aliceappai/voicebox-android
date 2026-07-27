@@ -44,6 +44,7 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
 
     private lateinit var webView: WebView
     private lateinit var skeletonView: VoiceboxSkeletonView
+    private var cardSkeletonView: VoiceboxCardSkeletonView? = null
     private lateinit var offlineView: VoiceboxOfflineView
     private var closeButton: ImageButton? = null
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -140,6 +141,18 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
             ViewGroup.LayoutParams.MATCH_PARENT,
         ))
 
+        // With the page reduced to card + avatar, the full-width bars-and-mic shimmer would
+        // read as stray shapes floating over a transparent sheet. Swap in the card-shaped one.
+        if (usesCardSkeleton) {
+            skeletonView.visibility = View.GONE
+            cardSkeletonView = VoiceboxCardSkeletonView(ctx).also {
+                sheetContainer.addView(it, FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                ))
+            }
+        }
+
         offlineView = VoiceboxOfflineView(ctx, onRetry = ::loadUrl)
         offlineView.visibility = View.GONE
         sheetContainer.addView(offlineView, FrameLayout.LayoutParams(
@@ -183,7 +196,7 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
         behavior.state = BottomSheetBehavior.STATE_HIDDEN
         view.post { applyPresentationMode() }
 
-        skeletonView.startAnimating()
+        startSkeleton()
         requestMicThenLoad()
     }
 
@@ -213,6 +226,39 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
             override fun onFailure(voiceboxView: VoiceboxView, error: Exception) {
                 upstream?.onFailure(voiceboxView, error)
             }
+        }
+    }
+
+    // MARK: - Skeleton
+
+    /**
+     * iOS picks the card-shaped shimmer for `.floatingCard`; Android has no such mode, so the
+     * signal is [VoiceboxView.hidePageChrome] — the flag that reduces the page to card + avatar.
+     */
+    private val usesCardSkeleton: Boolean
+        get() = voiceboxConfig.hidePageChrome
+
+    private fun startSkeleton() {
+        val card = cardSkeletonView
+        if (card != null) {
+            // The real card and the skeleton card are sized independently, so a visible WebView
+            // behind a transparent-surround skeleton shows both at once — a doubled-card look.
+            // Hide it now and fade it in as the skeleton leaves (iOS does the same).
+            webView.alpha = 0f
+            card.startAnimating()
+        } else {
+            skeletonView.visibility = View.VISIBLE
+            skeletonView.startAnimating()
+        }
+    }
+
+    private fun stopSkeleton() {
+        val card = cardSkeletonView
+        if (card != null) {
+            card.stopAnimating()
+            webView.animate().alpha(1f).setDuration(300).start()
+        } else {
+            skeletonView.stopAnimating()
         }
     }
 
@@ -272,6 +318,7 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
                 voiceboxView = voiceboxConfig,
                 onBgColor = ::handleBgColor,
                 onContentHeight = ::handleContentHeight,
+                onDismissRequested = ::dismiss,
                 mainHandler = mainHandler,
             ),
             "VoiceboxBridge",
@@ -300,11 +347,26 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
                 VoiceboxJsBridge.EVENT_OBSERVER,
                 setOf("*"),
             )
+            // Page-chrome CSS at document-start so the footer never paints before being
+            // hidden. Safe this early because the injection falls back to
+            // document.documentElement when <head> doesn't exist yet. Re-applied in
+            // onWebPageFinished() for devices without DOCUMENT_START_SCRIPT — the script
+            // is idempotent on its style id.
+            pageChromeJs()?.let {
+                WebViewCompat.addDocumentStartJavaScript(webView, it, setOf("*"))
+            }
         }
 
         // Pre-paint background to avoid white flash before page bg is detected
         voiceboxConfig.theme.backgroundColor?.let { webView.setBackgroundColor(it) }
     }
+
+    /** The page-chrome injection script for this config, or `null` when there's nothing to inject. */
+    private fun pageChromeJs(): String? =
+        VoiceboxPageChrome.injectionJs(
+            hidePageChrome = voiceboxConfig.hidePageChrome,
+            dismissOnTapOutside = voiceboxConfig.dismissOnTapOutside,
+        ).takeIf { it.isNotEmpty() }
 
     // MARK: - Presentation mode
 
@@ -378,16 +440,20 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
 
     private fun loadUrl() {
         offlineView.visibility = View.GONE
-        skeletonView.visibility = View.VISIBLE
-        skeletonView.startAnimating()
+        startSkeleton()
         webView.loadUrl(voiceboxConfig.buildUrl().toString())
     }
 
     // MARK: - WebView callbacks
 
     private fun onWebPageFinished() {
-        skeletonView.stopAnimating()
+        stopSkeleton()
         offlineView.visibility = View.GONE
+
+        // Re-apply the page-chrome CSS. On devices with DOCUMENT_START_SCRIPT this is a
+        // no-op (the style element already exists and is reused by id); without that
+        // feature this is the only injection point, so it must not be skipped.
+        pageChromeJs()?.let { webView.evaluateJavascript(it, null) }
 
         if (voiceboxConfig.presentationMode == VoiceboxPresentationMode.FitContent) {
             // Measure the document scroll height (CSS px ≈ dp when viewport=device-width)
@@ -405,7 +471,7 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
     }
 
     private fun onWebError() {
-        skeletonView.stopAnimating()
+        stopSkeleton()
         skeletonView.visibility = View.GONE
         offlineView.visibility = View.VISIBLE
         voiceboxConfig.listener?.onFailure(voiceboxConfig, Exception("Voicebox failed to load"))
@@ -414,6 +480,11 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
     // MARK: - JS bridge callbacks
 
     private fun handleBgColor(cssColor: String) {
+        // An explicit theme.backgroundColor is authoritative — the colour the page reports must
+        // not paint over it. This matters most for a transparent background: the page reports an
+        // opaque colour and would otherwise fill the sheet back in. iOS gates the same way, by
+        // only wiring its detection callback when theme.backgroundColor is nil.
+        if (voiceboxConfig.theme.backgroundColor != null) return
         val color = parseCssColor(cssColor) ?: return
         webView.setBackgroundColor(color)
     }
