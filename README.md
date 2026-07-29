@@ -58,6 +58,8 @@ into your app automatically — no changes needed in your `AndroidManifest.xml`.
 <uses-permission android:name="android.permission.INTERNET" />
 <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 <uses-permission android:name="android.permission.RECORD_AUDIO" />
+<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 ```
 
 ---
@@ -316,6 +318,22 @@ val vb = VoiceboxView(handle = "your-handle")
 vb.autoGrantMicPermission = true
 vb.present(this)
 ```
+
+---
+
+## Precise Location Permission
+
+The recorder's opt-in **"Share precise location"** toggle uses
+`navigator.geolocation` inside the WebView. That requires:
+
+1. `ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION` in the merged manifest
+   (declared by the SDK — no host-app change needed).
+2. `WebChromeClient.onGeolocationPermissionsShowPrompt` — implemented by the
+   SDK. When the visitor turns the toggle on, the SDK requests the OS location
+   permission (if not already held), then grants the WebView origin.
+
+Unlike mic, there is no `autoGrant` flag: location is requested **on demand**
+only after the visitor opts in. Host apps do not need to pre-request location.
 
 ---
 

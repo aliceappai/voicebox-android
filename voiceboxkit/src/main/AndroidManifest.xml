@@ -14,5 +14,12 @@
         with NotReadableError. This is a normal permission — no runtime grant needed.
     -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!--
+        Location is required for the recorder's opt-in "Share precise location" toggle
+        (navigator.geolocation inside the WebView). Requested at runtime only when the
+        visitor turns the toggle on — see VoiceboxChromeClient.onGeolocationPermissionsShowPrompt.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
 </manifest>

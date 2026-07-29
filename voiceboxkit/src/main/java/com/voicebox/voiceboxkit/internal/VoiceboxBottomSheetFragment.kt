@@ -14,6 +14,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
+import android.webkit.GeolocationPermissions
 import android.webkit.WebView
 import android.widget.FrameLayout
 import android.widget.ImageButton
@@ -58,6 +59,22 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
         ActivityResultContracts.RequestPermission()
     ) { _ ->
         loadUrl() // proceed regardless of grant/deny; page handles the denied state
+    }
+
+    // Pending WebView geolocation grant from onGeolocationPermissionsShowPrompt. Kept until
+    // the OS location dialog returns so we can grant/deny the origin.
+    private var pendingGeoOrigin: String? = null
+    private var pendingGeoCallback: GeolocationPermissions.Callback? = null
+
+    private val requestLocationLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        val granted = results[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            results[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        VoiceboxLog.d("Location permission result: granted=$granted")
+        pendingGeoCallback?.invoke(pendingGeoOrigin, granted, false)
+        pendingGeoCallback = null
+        pendingGeoOrigin = null
     }
 
     companion object {
@@ -188,6 +205,10 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
     }
 
     override fun onDestroyView() {
+        // Deny any in-flight geolocation prompt so Chromium isn't left waiting.
+        pendingGeoCallback?.invoke(pendingGeoOrigin, false, false)
+        pendingGeoCallback = null
+        pendingGeoOrigin = null
         webView.stopLoading()
         webView.destroy()
         super.onDestroyView()
@@ -231,6 +252,24 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
             .commitAllowingStateLoss()
     }
 
+    // MARK: - Location permission (precise-location toggle)
+
+    private fun requestLocationForGeolocation(
+        origin: String?,
+        callback: GeolocationPermissions.Callback?,
+    ) {
+        // Replace any in-flight request so we never leave a dangling callback.
+        pendingGeoCallback?.invoke(pendingGeoOrigin, false, false)
+        pendingGeoOrigin = origin
+        pendingGeoCallback = callback
+        requestLocationLauncher.launch(
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+            )
+        )
+    }
+
     // MARK: - Mic permission
 
     private fun requestMicThenLoad() {
@@ -263,6 +302,8 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
             mediaPlaybackRequiresUserGesture = false
             allowFileAccess = false
             setSupportMultipleWindows(false)
+            // Required for navigator.geolocation (precise-location toggle after send).
+            setGeolocationEnabled(true)
         }
 
         // JS bridge — WEBKIT_POLYFILL maps window.webkit.messageHandlers
@@ -283,7 +324,10 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
             onError = ::onWebError,
         )
 
-        webView.webChromeClient = VoiceboxChromeClient(requireContext(), voiceboxConfig)
+        webView.webChromeClient = VoiceboxChromeClient(
+            context = requireContext(),
+            onGeolocationPermissionNeeded = ::requestLocationForGeolocation,
+        )
 
         // Inject the webkit polyfill before any page scripts run, then the event
         // observer (order matters: the observer relies on the polyfill's
