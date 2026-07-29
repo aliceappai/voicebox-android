@@ -7,6 +7,19 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- Precise-location toggle in the WebView recorder. The SDK now implements
+  `WebChromeClient.onGeolocationPermissionsShowPrompt`, declares
+  `ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION`, enables WebView
+  geolocation, and requests the OS location permission on demand when the
+  visitor turns on "Share precise location". Without this, the page showed
+  "Precise location unavailable" and never prompted.
+
+---
+
 ## [1.0.0] — 2026-06-29
 
 Initial release of VoiceboxKit for Android, feature-parity with VoiceboxKit iOS 1.0.3.
