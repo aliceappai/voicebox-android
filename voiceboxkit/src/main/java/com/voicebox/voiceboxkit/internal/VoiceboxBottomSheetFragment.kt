@@ -330,9 +330,12 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
         )
 
         // Inject the webkit polyfill before any page scripts run, then the event
-        // observer (order matters: the observer relies on the polyfill's
-        // voiceboxEvent handler). The observer bridges the recorder's Save/Send
-        // clicks and postMessage events to onRecordingComplete/onMessageSubmitted.
+        // observer, then session capture. Order matters: both later scripts post through
+        // the polyfill's handlers, and the observer calls into the function session capture
+        // defines (guarded, since a recorder event can fire before it has run). The
+        // observer bridges the recorder's Save/Send clicks and postMessage events to
+        // onRecordingComplete/onMessageSubmitted; session capture reports the anonymous
+        // session id a host needs to claim signed-out recordings.
         if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
             WebViewCompat.addDocumentStartJavaScript(
                 webView,
@@ -342,6 +345,11 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
             WebViewCompat.addDocumentStartJavaScript(
                 webView,
                 VoiceboxJsBridge.EVENT_OBSERVER,
+                setOf("*"),
+            )
+            WebViewCompat.addDocumentStartJavaScript(
+                webView,
+                VoiceboxJsBridge.SESSION_CAPTURE,
                 setOf("*"),
             )
         }

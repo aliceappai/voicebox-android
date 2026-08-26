@@ -71,7 +71,7 @@ publishing {
         register<MavenPublication>("release") {
             groupId = "com.voicebox"
             artifactId = "voiceboxkit"
-            version = "1.0.1"
+            version = "1.1.0"
             afterEvaluate {
                 from(components["release"])
             }

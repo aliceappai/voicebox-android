@@ -38,6 +38,12 @@ internal class VoiceboxCache private constructor() {
     // Handles currently being warmed on the main thread. Prevents duplicate concurrent warms.
     private val inFlight = mutableSetOf<String>()
 
+    // Every handle a host has asked us to warm, so [rewarmAll] can re-fetch them after the
+    // recorder's session changes. Kept rather than asking the host to replay its own
+    // preloads: the warm set is an SDK internal, and a contract that says "call preload
+    // again after signing in" is silently wrong the first time somebody forgets.
+    private val warmedHandles = mutableSetOf<String>()
+
     private val prefs
         get() = VoiceboxKit.applicationContext
             ?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -55,6 +61,7 @@ internal class VoiceboxCache private constructor() {
      */
     fun preload(handle: String) {
         val context = VoiceboxKit.applicationContext ?: return
+        synchronized(warmedHandles) { warmedHandles.add(handle) }
         executor.execute {
             fetchAndStoreEtag(handle)
             mainHandler.post { warmWebView(context, handle) }
@@ -126,6 +133,21 @@ internal class VoiceboxCache private constructor() {
         } catch (_: Exception) {
             // Preload failure is silent and non-fatal — the sheet will load normally
         }
+    }
+
+    /**
+     * Re-warm every handle a host has preloaded.
+     *
+     * Called by both session methods on [VoiceboxKit]. A warm here only populates the
+     * shared HTTP disk cache (the warm WebView runs with JS disabled and is destroyed on
+     * load), and the recorder revalidates rather than being served blind from cache — so
+     * unlike iOS there is no live page holding stale state to throw away. What this buys is
+     * that the next fetch happens WITH the new cookie, so the first real open is a hit
+     * rather than a full load.
+     */
+    fun rewarmAll() {
+        val handles = synchronized(warmedHandles) { warmedHandles.toList() }
+        handles.forEach { preload(it) }
     }
 
     private fun warmWebView(context: Context, handle: String) {

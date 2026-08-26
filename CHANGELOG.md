@@ -7,6 +7,52 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [1.1.0]
+
+### Added
+
+- The recorder's anonymous session id is now reported to the host, via
+  `VoiceboxListener.onAnonymousSessionId(voiceboxView, sessionId)`. Messages recorded while
+  signed out belong to that id and to no account; handing it back at sign-in is what lets a
+  host claim them. The id is written lazily by the recorder, so it is read at document-start,
+  again on the recorder's own complete/submit events, and polled once a second (up to two
+  minutes) until it exists.
+- `VoiceboxKit.establishSession(url)` — sign the recorder's WebView in with a URL the host
+  obtained from its own backend. The recorder runs on a different host from a host app's API,
+  with its own cookie, so a natively signed-in user otherwise reaches it signed OUT and
+  everything they record is anonymous. **The SDK does not mint this URL, calls no Voicebox
+  API, and never handles credentials** — it navigates to what it is given, in the cookie
+  store the recorder uses, and reports whether it arrived. Call it once per session, not per
+  recorder open: `CookieManager` is process-global, so one call covers every voicebox opened
+  afterwards. Treat failure as unimportant and never block the recorder on it — an
+  unattributed recording is still captured, and can be claimed afterwards.
+- `VoiceboxKit.clearSession()` — forget who was recording on this device. Clears **both**
+  halves together, because a host that did one and forgot the other leaves the device in a
+  state neither describes: the session cookies for `baseUrl`'s host, and the anonymous
+  session id in the recorder's web storage. Clearing the id is **not** on its own a defence
+  against the wrong account claiming those recordings — that protection is server-side, where
+  a claim only touches messages nobody owns yet — it bounds how much history one claim covers.
+
+### Notes
+
+- ⚠️ **Clearing is scoped to the recorder's host, deliberately.** `CookieManager` is
+  process-global — one jar shared with every WebView the host app has, including ones showing
+  sites unrelated to Voicebox — so `removeAllCookies()` would log a host's users out of other
+  services on our sign-out. There is no per-domain removal API, so the recorder's cookies are
+  expired individually with `Max-Age=0`. `SessionCaptureTest` pins that nobody simplifies it
+  back.
+- Storage is cleared with `WebStorage.deleteOrigin`, not by running `localStorage.removeItem`
+  in a throwaway WebView. The latter looks like it should work and does not: a WebView with
+  nothing loaded sits on `about:blank`, whose storage belongs to a different origin, so the
+  removal succeeds and clears nothing.
+- Both session methods re-warm the preload cache afterwards, so the next fetch happens with
+  the new cookie. Re-warming is the SDK's job rather than the host's — only the cache knows
+  what is in the pool.
+- The storage key is a **cross-repo contract** with vbx-web (`profiles_session.js`). A rename
+  on either side silently stops capture, with no compile error on either; `SessionCaptureTest`
+  pins the literal.
+- Kept in parity with VoiceboxKit iOS 1.2.0, which ships the same two methods and callback.
+
 ## [1.0.1] — 2026-07-30
 
 ### Fixed
