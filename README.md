@@ -252,6 +252,9 @@ vb.listener = object : VoiceboxListener {
     override fun onFailure(voiceboxView: VoiceboxView, error: Exception) {
         // Network error or load failure
     }
+    override fun onAnonymousSessionId(voiceboxView: VoiceboxView, sessionId: String) {
+        // The recorder's anonymous session id — see "Sessions" below
+    }
 }
 
 vb.present(this)
@@ -269,6 +272,32 @@ state.listener = object : VoiceboxListener {
     override fun onMessageSubmitted(voiceboxView: VoiceboxView)  { /* … */ }
 }
 ```
+
+---
+
+## Sessions
+
+The recorder runs in a WebView with its own cookie, so it knows nothing about who is signed
+in to your app. Three calls let a host bridge that:
+
+```kotlin
+// 1. Messages recorded without an account belong to an anonymous session. Keep its id and
+//    send it to your backend after sign-in to claim them.
+state.listener = object : VoiceboxListener {
+    override fun onAnonymousSessionId(voiceboxView: VoiceboxView, sessionId: String) {
+        saveRecorderSessionId(sessionId)
+    }
+}
+
+// 2. Signed in? Hand the recorder a session URL minted by YOUR backend, once per session.
+VoiceboxKit.establishSession(sessionUrl) { success -> /* never block the recorder on this */ }
+
+// 3. On sign-out, forget the recorder's session and anonymous id (recorder host only).
+VoiceboxKit.clearSession()
+```
+
+The SDK never mints session URLs, calls no Voicebox API and never handles credentials.
+It logs nothing about sessions — log in the host app if you need to follow them.
 
 ---
 

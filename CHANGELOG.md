@@ -7,6 +7,33 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [1.1.0] — Unreleased
+
+Session support, in parity with VoiceboxKit iOS 1.1.4.
+
+### Added
+
+- `VoiceboxListener.onAnonymousSessionId(voiceboxView, sessionId)` — the recorder's anonymous
+  session id, which messages recorded without an account belong to. A host can send it to its
+  backend after sign-in to claim them. Read from the page's storage
+  (`vbx_profiles_session_id`) at document start, DOMContentLoaded and `load`, on the recorder's
+  save/submit events, once a second for up to two minutes, and once more natively when the
+  page finishes loading (which also covers WebViews without `DOCUMENT_START_SCRIPT`). An id
+  counts as reported only once a listener has actually received it.
+- `VoiceboxKit.establishSession(url, onResult)` — sign the recorder in by loading a
+  host-supplied session URL in an off-screen WebView, so the cookie lands in the shared jar.
+  20 s timeout; a newer call cancels one in flight. The SDK does not mint the URL, calls no
+  Voicebox API and never handles credentials.
+- `VoiceboxKit.clearSession(onDone)` — expire the recorder's cookies and delete its storage
+  for `baseUrl`'s host only. Never uses `removeAllCookies()` / `WebStorage.deleteAllData()`,
+  which would also sign a host's users out of unrelated sites.
+
+### Fixed
+
+- `VERSION` said `1.0.0` while the published artifact was `1.0.1`; both are now `1.1.0`.
+
+---
+
 ## [1.0.1] — 2026-07-30
 
 ### Fixed

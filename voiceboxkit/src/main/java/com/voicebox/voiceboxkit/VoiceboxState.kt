@@ -69,6 +69,11 @@ class VoiceboxState(
             override fun onFailure(voiceboxView: VoiceboxView, error: Exception) {
                 listener?.onFailure(voiceboxView, error)
             }
+            // Must be forwarded explicitly: an unlisted callback falls through to the
+            // interface's empty default and the host silently never hears it.
+            override fun onAnonymousSessionId(voiceboxView: VoiceboxView, sessionId: String) {
+                listener?.onAnonymousSessionId(voiceboxView, sessionId)
+            }
         }
         return vb
     }

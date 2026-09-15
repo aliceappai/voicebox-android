@@ -44,6 +44,7 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
     internal lateinit var voiceboxConfig: VoiceboxView
 
     private lateinit var webView: WebView
+    private var jsBridge: VoiceboxJsBridge? = null
     private lateinit var skeletonView: VoiceboxSkeletonView
     private lateinit var offlineView: VoiceboxOfflineView
     private var closeButton: ImageButton? = null
@@ -89,6 +90,34 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
                     .beginTransaction()
                     .add(android.R.id.content, fragment, TAG)
                     .commitAllowingStateLoss()
+            }
+        }
+
+        /**
+         * [upstream] with [onSubmitted] run after `onMessageSubmitted`. Every other callback is
+         * passed straight through. Extracted from the fragment so the forwarding is unit-testable.
+         */
+        internal fun autoDismissListener(
+            upstream: VoiceboxListener?,
+            onSubmitted: () -> Unit,
+        ): VoiceboxListener = object : VoiceboxListener {
+            override fun onRecordingComplete(voiceboxView: VoiceboxView) {
+                upstream?.onRecordingComplete(voiceboxView)
+            }
+            override fun onMessageSubmitted(voiceboxView: VoiceboxView) {
+                upstream?.onMessageSubmitted(voiceboxView)
+                onSubmitted()
+            }
+            override fun onDismiss(voiceboxView: VoiceboxView) {
+                upstream?.onDismiss(voiceboxView)
+            }
+            override fun onFailure(voiceboxView: VoiceboxView, error: Exception) {
+                upstream?.onFailure(voiceboxView, error)
+            }
+            // Must be forwarded explicitly: an unlisted callback falls through to the
+            // interface's empty default and the host silently never hears it.
+            override fun onAnonymousSessionId(voiceboxView: VoiceboxView, sessionId: String) {
+                upstream?.onAnonymousSessionId(voiceboxView, sessionId)
             }
         }
     }
@@ -219,22 +248,7 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
     // Covers both the JS bridge path (VoiceboxJsBridge) and the /sent/ URL fallback
     // (VoiceboxWebViewClient) because both route through voiceboxConfig.listener.
     private fun wrapListenerForAutoDismiss() {
-        val upstream = voiceboxConfig.listener
-        voiceboxConfig.listener = object : VoiceboxListener {
-            override fun onRecordingComplete(voiceboxView: VoiceboxView) {
-                upstream?.onRecordingComplete(voiceboxView)
-            }
-            override fun onMessageSubmitted(voiceboxView: VoiceboxView) {
-                upstream?.onMessageSubmitted(voiceboxView)
-                dismiss()
-            }
-            override fun onDismiss(voiceboxView: VoiceboxView) {
-                upstream?.onDismiss(voiceboxView)
-            }
-            override fun onFailure(voiceboxView: VoiceboxView, error: Exception) {
-                upstream?.onFailure(voiceboxView, error)
-            }
-        }
+        voiceboxConfig.listener = autoDismissListener(voiceboxConfig.listener, ::dismiss)
     }
 
     // MARK: - Dismiss
@@ -308,15 +322,14 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
 
         // JS bridge — WEBKIT_POLYFILL maps window.webkit.messageHandlers
         // to window.VoiceboxBridge.onMessage() so the web app needs no platform branching.
-        webView.addJavascriptInterface(
-            VoiceboxJsBridge(
-                voiceboxView = voiceboxConfig,
-                onBgColor = ::handleBgColor,
-                onContentHeight = ::handleContentHeight,
-                mainHandler = mainHandler,
-            ),
-            "VoiceboxBridge",
+        val bridge = VoiceboxJsBridge(
+            voiceboxView = voiceboxConfig,
+            onBgColor = ::handleBgColor,
+            onContentHeight = ::handleContentHeight,
+            mainHandler = mainHandler,
         )
+        jsBridge = bridge
+        webView.addJavascriptInterface(bridge, "VoiceboxBridge")
 
         webView.webViewClient = VoiceboxWebViewClient(
             voiceboxView = voiceboxConfig,
@@ -344,7 +357,16 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
                 VoiceboxJsBridge.EVENT_OBSERVER,
                 setOf("*"),
             )
+            // Reports the anonymous session id. After the polyfill, which defines its
+            // voiceboxSession handler.
+            WebViewCompat.addDocumentStartJavaScript(
+                webView,
+                VoiceboxJsBridge.SESSION_CAPTURE,
+                setOf("*"),
+            )
         }
+        // Without DOCUMENT_START_SCRIPT none of the scripts above run; the session id then
+        // still arrives through the page-finished read (readSessionIdFromStorage).
 
         // Pre-paint background to avoid white flash before page bg is detected
         voiceboxConfig.theme.backgroundColor?.let { webView.setBackgroundColor(it) }
@@ -433,6 +455,8 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
         skeletonView.stopAnimating()
         offlineView.visibility = View.GONE
 
+        readSessionIdFromStorage()
+
         if (voiceboxConfig.presentationMode == VoiceboxPresentationMode.FitContent) {
             // Measure the document scroll height (CSS px ≈ dp when viewport=device-width)
             // and resize the sheet immediately without depending on a JS message from the page.
@@ -445,6 +469,16 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
                 val heightDp = result?.trim()?.toFloatOrNull() ?: return@evaluateJavascript
                 if (heightDp > 0f) mainHandler.post { handleContentHeight(heightDp) }
             }
+        }
+    }
+
+    // The second capture path (see VoiceboxJsBridge.SESSION_READ_SNIPPET): reads storage
+    // directly, so it works without document-start scripts and is gated only by the
+    // bridge's native "already delivered" check.
+    private fun readSessionIdFromStorage() {
+        webView.evaluateJavascript(VoiceboxJsBridge.SESSION_READ_SNIPPET) { result ->
+            val sessionId = VoiceboxJsBridge.parseEvaluatedString(result) ?: return@evaluateJavascript
+            mainHandler.post { jsBridge?.reportSessionId(sessionId) }
         }
     }
 

@@ -39,6 +39,8 @@ internal class VoiceboxWebViewClient(
     override fun onPageFinished(view: WebView, url: String) {
         super.onPageFinished(view, url)
         VoiceboxLog.d("Page finished: $url")
+        // Where the recorder actually landed (after any redirect) — see VoiceboxSessionStorage.
+        VoiceboxSessionStorage.rememberHost(url)
         onPageFinished()
     }
 
