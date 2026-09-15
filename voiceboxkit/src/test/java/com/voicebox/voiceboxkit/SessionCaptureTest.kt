@@ -273,6 +273,20 @@ class SessionCaptureTest {
         assertEquals(listOf("a" to false), results)
     }
 
+    @Test
+    fun `clearSession cancels a session load still in flight`() {
+        val results = mutableListOf<Boolean>()
+
+        VoiceboxKit.establishSession("https://vbx.to/consume?token=x") { results += it }
+        VoiceboxKit.clearSession()
+        idleMain()
+
+        // Reported as failed, and never succeeds later: the load was stopped before the clear.
+        assertEquals(listOf(false), results)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(VoiceboxSessionPrimer.TIMEOUT_MS + 1))
+        assertEquals(listOf(false), results)
+    }
+
     // MARK: - Scoped clearing
 
     @Test

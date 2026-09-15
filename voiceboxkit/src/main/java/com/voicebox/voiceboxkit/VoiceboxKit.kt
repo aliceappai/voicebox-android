@@ -128,6 +128,10 @@ object VoiceboxKit {
      * Both halves together, because either one left behind describes a state the other no
      * longer does. Other sites' cookies and storage are never touched.
      *
+     * A [establishSession] still loading is cancelled FIRST (its callback reports `false`): left
+     * running, it could finish after the clear and sign the recorder back in as the account that
+     * just signed out.
+     *
      * Requires [init]. Safe to call from any thread; [onDone] runs on the main thread.
      *
      * Mirrors iOS `VoiceboxKit.clearSession(completion:)`.
@@ -138,6 +142,7 @@ object VoiceboxKit {
                 onDone?.invoke()
                 return@runOnMain
             }
+            VoiceboxSessionPrimer.shared.cancel()
             VoiceboxSessionStorage.clearFor(baseUrl) { onDone?.invoke() }
         }
     }

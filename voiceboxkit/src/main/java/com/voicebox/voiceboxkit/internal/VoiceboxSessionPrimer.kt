@@ -79,6 +79,13 @@ internal class VoiceboxSessionPrimer private constructor() {
         webView.loadUrl(url)
     }
 
+    /**
+     * Stop a session load still in flight: the WebView is stopped and destroyed, and its callback
+     * reports `false`. Called by [VoiceboxKit.clearSession] BEFORE it clears — otherwise a load that
+     * finishes after the clear would set the previous account's cookie again.
+     */
+    fun cancel() = finish(false)
+
     private fun finish(success: Boolean) {
         timeout?.let { mainHandler.removeCallbacks(it) }
         timeout = null
