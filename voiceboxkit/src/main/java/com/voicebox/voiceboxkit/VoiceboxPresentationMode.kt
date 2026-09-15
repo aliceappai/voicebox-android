@@ -49,4 +49,27 @@ sealed class VoiceboxPresentationMode {
         /** Fraction clamped to [0.1, 1.0]. */
         val clamped: Float get() = fraction.coerceIn(0.1f, 1.0f)
     }
+
+    /**
+     * The recorder card floating, centred, over a dimmed screen — no sheet, no drag handle.
+     * The recorder page is restyled to fit: its footer is hidden, the card sizes to its content
+     * and is centred in the viewport, and the voicebox's own background fills the screen
+     * behind it. Shows a card-shaped loading skeleton and plays [VoiceboxView.entranceAnimation].
+     *
+     * With [VoiceboxView.showCloseButton] on, the `×` is the only dismiss; with it off, a tap
+     * outside the card dismisses instead.
+     *
+     * ```kotlin
+     * vb.presentationMode = VoiceboxPresentationMode.FloatingCard(dimOpacity = 0.15f)
+     * ```
+     *
+     * Mirrors iOS `.floatingCard(dimOpacity:)`.
+     *
+     * @param dimOpacity Black dim painted behind the page, 0.0–1.0. Visible only where the
+     *   page itself is transparent.
+     */
+    data class FloatingCard(val dimOpacity: Float = 0.35f) : VoiceboxPresentationMode() {
+        /** [dimOpacity] clamped to [0.0, 1.0]. */
+        val clampedDim: Float get() = dimOpacity.coerceIn(0f, 1f)
+    }
 }

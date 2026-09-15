@@ -111,7 +111,7 @@ class SessionCaptureTest {
         val listener = RecordingListener()
         view.listener = listener
 
-        bridge().onMessage("voiceboxSession", """{"sessionId":"abc-123","reason":"load"}""")
+        bridge().onMessage("voiceboxSession", """{"sessionId":"abc-123"}""")
         idleMain()
 
         assertEquals(listOf("abc-123"), listener.sessionIds)
@@ -173,7 +173,7 @@ class SessionCaptureTest {
         val bridge = bridge()
 
         bridge.onMessage("voiceboxSession", "not json")
-        bridge.onMessage("voiceboxSession", """{"reason":"load"}""")
+        bridge.onMessage("voiceboxSession", """{}""")
         bridge.onMessage("voiceboxSession", """{"sessionId":""}""")
         idleMain()
 
@@ -184,7 +184,7 @@ class SessionCaptureTest {
 
     @Test
     fun `parseSessionPayload reads the id and ignores everything else`() {
-        assertEquals("abc", VoiceboxJsBridge.parseSessionPayload("""{"sessionId":"abc","reason":"poll"}"""))
+        assertEquals("abc", VoiceboxJsBridge.parseSessionPayload("""{"sessionId":"abc","other":"x"}"""))
         assertEquals("abc", VoiceboxJsBridge.parseSessionPayload("""{"sessionId":" abc "}"""))
         assertNull(VoiceboxJsBridge.parseSessionPayload("""{"sessionId":""}"""))
         assertNull(VoiceboxJsBridge.parseSessionPayload(null))
@@ -225,7 +225,7 @@ class SessionCaptureTest {
 
     @Test
     fun `recorder events re-check the session id`() {
-        assertTrue(VoiceboxJsBridge.EVENT_OBSERVER.contains("__voiceboxPostSessionId('event')"))
+        assertTrue(VoiceboxJsBridge.EVENT_OBSERVER.contains("__voiceboxPostSessionId()"))
     }
 
     // MARK: - establishSession / clearSession

@@ -1,6 +1,12 @@
 package com.voicebox.voiceboxkit
 
 import android.Manifest
+import android.animation.ValueAnimator
+import android.os.Build
+import android.provider.Settings
+import android.view.animation.DecelerateInterpolator
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -54,6 +60,17 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
     private lateinit var behavior: BottomSheetBehavior<FrameLayout>
     private var dismissDispatched = false
 
+    // MARK: Floating card state
+    private lateinit var rootView: CoordinatorLayout
+    private var cardSkeleton: VoiceboxCardSkeletonView? = null
+    /** One-shot: onPageFinished fires more than once per load (redirects, subframes). */
+    private var cardRevealed = false
+    /** One-shot: the fade-out must run once however many dismiss triggers race. */
+    private var cardDismissing = false
+
+    private val isFloatingCard: Boolean
+        get() = voiceboxConfig.presentationMode is VoiceboxPresentationMode.FloatingCard
+
     // Mirrors iOS requestMicrophonePermission() — proactively request RECORD_AUDIO before
     // loading so the native OS dialog appears when the sheet opens, not mid-recording.
     private val requestMicLauncher = registerForActivityResult(
@@ -80,6 +97,12 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
 
     companion object {
         private const val TAG = "VoiceboxKit"
+
+        /** Dim fade on present / dismiss for the floating card. */
+        private const val FLOATING_CARD_FADE_MS = 200L
+        /** Gap between the status bar and the floating card's ×. */
+        private const val FLOATING_CARD_CLOSE_TOP_GAP_DP = 8f
+        private const val FLOATING_CARD_CLOSE_ELEVATION_DP = 4f
 
         internal fun show(activity: FragmentActivity, voiceboxView: VoiceboxView) {
             if (activity.supportFragmentManager.findFragmentByTag(TAG) != null) return
@@ -151,26 +174,37 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
             )
         }
+        rootView = root
 
-        // Scrim: 60% dim over the Activity; tap to dismiss (except FullScreen)
-        val scrim = View(ctx).apply {
-            setBackgroundColor(Color.argb(153, 0, 0, 0))
+        val floatingCard = voiceboxConfig.presentationMode as? VoiceboxPresentationMode.FloatingCard
+        if (floatingCard != null) {
+            // Floating card: the dim is painted on the root, BEHIND the (transparent) WebView,
+            // so it only shows where the page itself is transparent. No scrim view and no
+            // tap-to-dismiss on it — the page wires its own tap-outside when there is no ×.
+            root.setBackgroundColor(Color.argb((floatingCard.clampedDim * 255).toInt(), 0, 0, 0))
+        } else {
+            // Scrim: 60% dim over the Activity; tap to dismiss (except FullScreen)
+            val scrim = View(ctx).apply {
+                setBackgroundColor(Color.argb(153, 0, 0, 0))
+            }
+            if (voiceboxConfig.presentationMode != VoiceboxPresentationMode.FullScreen) {
+                scrim.setOnClickListener { dismiss() }
+            }
+            root.addView(scrim, CoordinatorLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ))
         }
-        if (voiceboxConfig.presentationMode != VoiceboxPresentationMode.FullScreen) {
-            scrim.setOnClickListener { dismiss() }
-        }
-        root.addView(scrim, CoordinatorLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT,
-        ))
 
-        // Sheet container: FrameLayout with BottomSheetBehavior attached via layout params
+        // Sheet container: FrameLayout with BottomSheetBehavior attached via layout params.
+        // The floating card has no sheet: its container simply fills the screen, edge to edge
+        // (a BottomSheetBehavior would inset it below the status bar).
         sheetContainer = FrameLayout(ctx)
         val sheetParams = CoordinatorLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT,
         ).apply {
-            behavior = BottomSheetBehavior<FrameLayout>()
+            if (floatingCard == null) behavior = BottomSheetBehavior<FrameLayout>()
         }
         root.addView(sheetContainer, sheetParams)
 
@@ -185,6 +219,19 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT,
         ))
+
+        if (floatingCard != null) {
+            // Hidden until the page is ready, so the skeleton turns into the card rather than
+            // both showing at once (the real card is sized differently).
+            webView.alpha = 0f
+            skeletonView.visibility = View.GONE
+            cardSkeleton = VoiceboxCardSkeletonView(ctx).also {
+                sheetContainer.addView(it, FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                ))
+            }
+        }
 
         offlineView = VoiceboxOfflineView(ctx, onRetry = ::loadUrl)
         offlineView.visibility = View.GONE
@@ -209,6 +256,18 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        if (isFloatingCard) {
+            setupWebView()
+            wrapListenerForAutoDismiss()
+            applyFloatingCardInsets()
+            // The dim fades in with the presentation; the card follows once the page is ready.
+            rootView.alpha = 0f
+            rootView.animate().alpha(1f).setDuration(FLOATING_CARD_FADE_MS).start()
+            startLoadingIndicator()
+            requestMicThenLoad()
+            return
+        }
+
         behavior = (sheetContainer.layoutParams as CoordinatorLayout.LayoutParams)
             .behavior as BottomSheetBehavior<FrameLayout>
 
@@ -229,7 +288,7 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
         behavior.state = BottomSheetBehavior.STATE_HIDDEN
         view.post { applyPresentationMode() }
 
-        skeletonView.startAnimating()
+        startLoadingIndicator()
         requestMicThenLoad()
     }
 
@@ -254,6 +313,14 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
     // MARK: - Dismiss
 
     internal fun dismiss() {
+        if (isFloatingCard) {
+            if (cardDismissing) return
+            cardDismissing = true
+            rootView.animate().alpha(0f).setDuration(FLOATING_CARD_FADE_MS)
+                .withEndAction { dispatchDismiss() }
+                .start()
+            return
+        }
         behavior.state = BottomSheetBehavior.STATE_HIDDEN
     }
 
@@ -327,6 +394,7 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
             onBgColor = ::handleBgColor,
             onContentHeight = ::handleContentHeight,
             mainHandler = mainHandler,
+            onDismissRequest = ::dismiss,
         )
         jsBridge = bridge
         webView.addJavascriptInterface(bridge, "VoiceboxBridge")
@@ -364,12 +432,105 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
                 VoiceboxJsBridge.SESSION_CAPTURE,
                 setOf("*"),
             )
+            // Floating card: restyle the page into a centred card before it first paints.
+            if (isFloatingCard) {
+                WebViewCompat.addDocumentStartJavaScript(webView, floatingCardInjectionJs(), setOf("*"))
+            }
         }
         // Without DOCUMENT_START_SCRIPT none of the scripts above run; the session id then
         // still arrives through the page-finished read (readSessionIdFromStorage).
 
-        // Pre-paint background to avoid white flash before page bg is detected
-        voiceboxConfig.theme.backgroundColor?.let { webView.setBackgroundColor(it) }
+        // Pre-paint background to avoid white flash before page bg is detected. The floating
+        // card stays transparent instead, so the dim shows wherever the page does.
+        if (isFloatingCard) {
+            webView.setBackgroundColor(Color.TRANSPARENT)
+        } else {
+            voiceboxConfig.theme.backgroundColor?.let { webView.setBackgroundColor(it) }
+        }
+    }
+
+    // MARK: - Floating card
+
+    private fun floatingCardInjectionJs(): String =
+        VoiceboxFloatingCard.injectionJs(
+            tapOutsideDismiss = VoiceboxFloatingCard.usesTapOutsideDismiss(voiceboxConfig.showCloseButton),
+        )
+
+    /**
+     * Edge to edge: the page fills the screen under the status bar, and the × sits just below
+     * it. The keyboard shrinks the WebView from the bottom instead of scrolling the page, so
+     * the page's `100vh` recomputes and the card re-centres above the keyboard — rather than
+     * the whole page sliding up and exposing the background behind the card (iOS #246).
+     */
+    private fun applyFloatingCardInsets() {
+        val closeTopGap = requireContext().dpToPx(FLOATING_CARD_CLOSE_TOP_GAP_DP)
+        ViewCompat.setOnApplyWindowInsetsListener(sheetContainer) { _, insets ->
+            val statusTop = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
+            val imeBottom = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+            (webView.layoutParams as? FrameLayout.LayoutParams)?.let { lp ->
+                if (lp.bottomMargin != imeBottom) {
+                    lp.bottomMargin = imeBottom
+                    webView.layoutParams = lp
+                }
+            }
+            closeButton?.let { button ->
+                (button.layoutParams as? FrameLayout.LayoutParams)?.let { lp ->
+                    lp.topMargin = statusTop + closeTopGap
+                    button.layoutParams = lp
+                }
+            }
+            insets
+        }
+        ViewCompat.requestApplyInsets(sheetContainer)
+    }
+
+    /**
+     * Skeleton → card: (re)apply the page styling, start the card's own lift-in, then fade the
+     * WebView in — settling from a slight scale-up when [VoiceboxEntranceAnimation.BackgroundReveal]
+     * is on. Both animations are skipped when the device has animations turned off.
+     */
+    private fun revealFloatingCard() {
+        if (cardRevealed) return
+        cardRevealed = true
+        val animations = voiceboxConfig.entranceAnimation
+        val animate = areAnimationsEnabled()
+
+        webView.evaluateJavascript(floatingCardInjectionJs(), null)
+        webView.evaluateJavascript(
+            VoiceboxFloatingCard.entranceJs(
+                liftCard = animate && VoiceboxEntranceAnimation.CardLiftIn in animations,
+            ),
+            null,
+        )
+        cardSkeleton?.stopAnimating()
+
+        if (animate && VoiceboxEntranceAnimation.BackgroundReveal in animations) {
+            webView.scaleX = VoiceboxFloatingCard.BACKGROUND_REVEAL_START_SCALE
+            webView.scaleY = VoiceboxFloatingCard.BACKGROUND_REVEAL_START_SCALE
+            webView.animate()
+                .alpha(1f).scaleX(1f).scaleY(1f)
+                .setDuration(VoiceboxFloatingCard.BACKGROUND_REVEAL_DURATION_MS)
+                .setInterpolator(DecelerateInterpolator())
+                .start()
+        } else {
+            webView.alpha = 1f
+        }
+    }
+
+    private fun areAnimationsEnabled(): Boolean =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            ValueAnimator.areAnimatorsEnabled()
+        } else {
+            Settings.Global.getFloat(requireContext().contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) != 0f
+        }
+
+    private fun startLoadingIndicator() {
+        if (isFloatingCard) {
+            cardSkeleton?.startAnimating()
+        } else {
+            skeletonView.visibility = View.VISIBLE
+            skeletonView.startAnimating()
+        }
     }
 
     // MARK: - Presentation mode
@@ -415,6 +576,8 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
                 behavior.state = BottomSheetBehavior.STATE_HALF_EXPANDED
                 behavior.skipCollapsed = true
             }
+            // No sheet to size — onViewCreated returns before this is ever scheduled.
+            is VoiceboxPresentationMode.FloatingCard -> return
         }
 
         applySheetCornerRadius()
@@ -444,16 +607,15 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
 
     private fun loadUrl() {
         offlineView.visibility = View.GONE
-        skeletonView.visibility = View.VISIBLE
-        skeletonView.startAnimating()
+        startLoadingIndicator()
         webView.loadUrl(voiceboxConfig.buildUrl().toString())
     }
 
     // MARK: - WebView callbacks
 
     private fun onWebPageFinished() {
-        skeletonView.stopAnimating()
         offlineView.visibility = View.GONE
+        if (isFloatingCard) revealFloatingCard() else skeletonView.stopAnimating()
 
         readSessionIdFromStorage()
 
@@ -485,6 +647,7 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
     private fun onWebError() {
         skeletonView.stopAnimating()
         skeletonView.visibility = View.GONE
+        cardSkeleton?.stopAnimating()
         offlineView.visibility = View.VISIBLE
         voiceboxConfig.listener?.onFailure(voiceboxConfig, Exception("Voicebox failed to load"))
     }
@@ -520,6 +683,13 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
                 setColor(theme.closeButtonBackgroundColor ?: Color.TRANSPARENT)
+            }
+
+            // Floating card over arbitrary voicebox backgrounds — including light images where
+            // a plain white disc blends in — gets a soft shadow so it reads on ANY backdrop.
+            if (isFloatingCard && theme.closeButtonBackgroundColor != null) {
+                outlineProvider = ViewOutlineProvider.BACKGROUND
+                elevation = ctx.dpToPx(FLOATING_CARD_CLOSE_ELEVATION_DP).toFloat()
             }
 
             setOnClickListener { dismiss() }

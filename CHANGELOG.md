@@ -28,6 +28,16 @@ Session support, in parity with VoiceboxKit iOS 1.1.4.
   for `baseUrl`'s host only. Never uses `removeAllCookies()` / `WebStorage.deleteAllData()`,
   which would also sign a host's users out of unrelated sites.
 
+- `VoiceboxPresentationMode.FloatingCard(dimOpacity)` — the recorder card centred over a dimmed,
+  edge-to-edge screen, matching iOS `.floatingCard`. The page is restyled (footer hidden, card
+  sized to content and vertically centred), a card-shaped skeleton shows while it loads, the ×
+  becomes a shadowed disc below the status bar, and the keyboard shrinks the page so the card
+  re-centres above it. With no close button, a tap outside the card dismisses.
+- `VoiceboxEntranceAnimation` (`BackgroundReveal`, `CardLiftIn`; `ALL`/`NONE`) and
+  `VoiceboxView.entranceAnimation` / `VoiceboxState.entranceAnimation` — the floating card's
+  entrance (350 ms background fade/settle, 300 ms card lift-in after 60 ms, as iOS). Skipped when
+  system animations are off.
+
 ### Fixed
 
 - `VERSION` said `1.0.0` while the published artifact was `1.0.1`; both are now `1.1.0`.

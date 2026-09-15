@@ -133,6 +133,7 @@ Choose how the sheet is presented by setting `presentationMode` on your state or
 | `FitContent` | Sheet height auto-fits the web content (adjusted via JS bridge). |
 | `Custom(height)` | Fixed height in dp. |
 | `CustomFraction(fraction)` | Fraction of screen height (0.0–1.0). |
+| `FloatingCard(dimOpacity)` | The recorder card centred over a dimmed screen, with a card skeleton and an entrance animation (`entranceAnimation`). |
 
 ### Compose
 

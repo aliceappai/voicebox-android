@@ -20,6 +20,8 @@ internal class VoiceboxJsBridge(
     private val onBgColor: (String) -> Unit,
     private val onContentHeight: (Float) -> Unit,
     private val mainHandler: Handler,
+    /** Page-initiated dismiss — the floating card's tap outside the card (no × shown). */
+    private val onDismissRequest: () -> Unit = {},
 ) {
     @JavascriptInterface
     fun onMessage(handlerName: String, payload: String) {
@@ -74,6 +76,10 @@ internal class VoiceboxJsBridge(
         }.trim()
 
         VoiceboxLog.d("voiceboxEvent: $type")
+        if (type == "dismiss") {
+            onDismissRequest()
+            return
+        }
         val listener = voiceboxView.listener ?: return
         when (type) {
             "recordingComplete" -> listener.onRecordingComplete(voiceboxView)
@@ -146,7 +152,7 @@ internal class VoiceboxJsBridge(
                     // so re-check it on every recorder event. Guarded: SESSION_CAPTURE may
                     // not have run (injection order, or no DOCUMENT_START_SCRIPT support).
                     try{
-                        if(window.__voiceboxPostSessionId) window.__voiceboxPostSessionId('event');
+                        if(window.__voiceboxPostSessionId) window.__voiceboxPostSessionId();
                     }catch(e){}
                 }
 
@@ -218,7 +224,7 @@ internal class VoiceboxJsBridge(
                     }catch(e){ return null; }
                 }
 
-                function post(reason){
+                function post(){
                     var id = readSessionId();
                     if(!id) return false;
                     if(id === delivered) return true;
@@ -228,7 +234,7 @@ internal class VoiceboxJsBridge(
                         var h = window.webkit
                             && window.webkit.messageHandlers
                             && window.webkit.messageHandlers.voiceboxSession;
-                        if(h) ok = h.postMessage({ reason: reason, sessionId: id }) === true;
+                        if(h) ok = h.postMessage({ sessionId: id }) === true;
                     }catch(e){}
 
                     if(ok) delivered = id;
@@ -237,14 +243,14 @@ internal class VoiceboxJsBridge(
 
                 window.__voiceboxPostSessionId = post;
 
-                post('documentStart');
-                document.addEventListener('DOMContentLoaded', function(){ post('domReady'); });
-                window.addEventListener('load', function(){ post('load'); });
+                post();
+                document.addEventListener('DOMContentLoaded', post);
+                window.addEventListener('load', post);
 
                 var tries = 0;
                 var timer = setInterval(function(){
                     tries += 1;
-                    if(post('poll') || tries >= 120) clearInterval(timer);
+                    if(post() || tries >= 120) clearInterval(timer);
                 }, 1000);
             })();
         """.trimIndent()

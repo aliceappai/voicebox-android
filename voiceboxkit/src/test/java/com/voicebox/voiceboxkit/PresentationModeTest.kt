@@ -13,9 +13,10 @@ class PresentationModeTest {
             VoiceboxPresentationMode.BottomSheet,
             VoiceboxPresentationMode.Sheet,
             VoiceboxPresentationMode.FitContent,
+            VoiceboxPresentationMode.FloatingCard(),
         )
         // Each toString() is unique
-        assertEquals(4, modes.map { it.javaClass.simpleName }.toSet().size)
+        assertEquals(5, modes.map { it.javaClass.simpleName }.toSet().size)
     }
 
     @Test
