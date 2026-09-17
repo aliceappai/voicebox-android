@@ -35,7 +35,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    implementation("com.github.aliceappai:voicebox-android:1.0.0")
+    implementation("com.github.aliceappai:voicebox-android:1.1.0")
 }
 ```
 
@@ -43,7 +43,7 @@ dependencies {
 
 ```kotlin
 dependencies {
-    implementation("com.voicebox:voiceboxkit:1.0.0")
+    implementation("com.voicebox:voiceboxkit:1.1.0")
 }
 ```
 
