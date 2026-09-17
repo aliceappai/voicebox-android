@@ -30,6 +30,12 @@ class VoiceboxView(
     /** Whether to show the close button overlay. Default: `true`. */
     var showCloseButton: Boolean = true
 
+    /**
+     * Entrance animation(s) played in [VoiceboxPresentationMode.FloatingCard]. Ignored by every
+     * other mode. Default: [VoiceboxEntranceAnimation.ALL].
+     */
+    var entranceAnimation: Set<VoiceboxEntranceAnimation> = VoiceboxEntranceAnimation.ALL
+
     /** Listener for lifecycle events (recording complete, dismiss, error). */
     var listener: VoiceboxListener? = null
 

@@ -35,7 +35,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    implementation("com.github.aliceappai:voicebox-android:1.0.0")
+    implementation("com.github.aliceappai:voicebox-android:1.1.0")
 }
 ```
 
@@ -43,7 +43,7 @@ dependencies {
 
 ```kotlin
 dependencies {
-    implementation("com.voicebox:voiceboxkit:1.0.0")
+    implementation("com.voicebox:voiceboxkit:1.1.0")
 }
 ```
 
@@ -133,6 +133,7 @@ Choose how the sheet is presented by setting `presentationMode` on your state or
 | `FitContent` | Sheet height auto-fits the web content (adjusted via JS bridge). |
 | `Custom(height)` | Fixed height in dp. |
 | `CustomFraction(fraction)` | Fraction of screen height (0.0–1.0). |
+| `FloatingCard(dimOpacity)` | The recorder card centred over a dimmed screen, with a card skeleton and an entrance animation (`entranceAnimation`). |
 
 ### Compose
 
@@ -252,6 +253,9 @@ vb.listener = object : VoiceboxListener {
     override fun onFailure(voiceboxView: VoiceboxView, error: Exception) {
         // Network error or load failure
     }
+    override fun onAnonymousSessionId(voiceboxView: VoiceboxView, sessionId: String) {
+        // The recorder's anonymous session id — see "Sessions" below
+    }
 }
 
 vb.present(this)
@@ -269,6 +273,32 @@ state.listener = object : VoiceboxListener {
     override fun onMessageSubmitted(voiceboxView: VoiceboxView)  { /* … */ }
 }
 ```
+
+---
+
+## Sessions
+
+The recorder runs in a WebView with its own cookie, so it knows nothing about who is signed
+in to your app. Three calls let a host bridge that:
+
+```kotlin
+// 1. Messages recorded without an account belong to an anonymous session. Keep its id and
+//    send it to your backend after sign-in to claim them.
+state.listener = object : VoiceboxListener {
+    override fun onAnonymousSessionId(voiceboxView: VoiceboxView, sessionId: String) {
+        saveRecorderSessionId(sessionId)
+    }
+}
+
+// 2. Signed in? Hand the recorder a session URL minted by YOUR backend, once per session.
+VoiceboxKit.establishSession(sessionUrl) { success -> /* never block the recorder on this */ }
+
+// 3. On sign-out, forget the recorder's session and anonymous id (recorder host only).
+VoiceboxKit.clearSession()
+```
+
+The SDK never mints session URLs, calls no Voicebox API and never handles credentials.
+It logs nothing about sessions — log in the host app if you need to follow them.
 
 ---
 

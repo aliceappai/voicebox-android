@@ -35,6 +35,9 @@ class VoiceboxState(
     /** Whether to show the built-in close button. Default: `true`. */
     var showCloseButton: Boolean = true
 
+    /** Entrance animation(s) for [VoiceboxPresentationMode.FloatingCard]. Default: all. */
+    var entranceAnimation: Set<VoiceboxEntranceAnimation> = VoiceboxEntranceAnimation.ALL
+
     /** Lifecycle listener for this presentation. */
     var listener: VoiceboxListener? = null
 
@@ -54,6 +57,7 @@ class VoiceboxState(
         val vb = VoiceboxView(handle = handle, params = params, theme = theme)
         vb.presentationMode = presentationMode
         vb.showCloseButton = showCloseButton
+        vb.entranceAnimation = entranceAnimation
         vb.autoGrantMicPermission = autoGrantMicPermission
         vb.listener = object : VoiceboxListener {
             override fun onRecordingComplete(voiceboxView: VoiceboxView) {
@@ -68,6 +72,11 @@ class VoiceboxState(
             }
             override fun onFailure(voiceboxView: VoiceboxView, error: Exception) {
                 listener?.onFailure(voiceboxView, error)
+            }
+            // Must be forwarded explicitly: an unlisted callback falls through to the
+            // interface's empty default and the host silently never hears it.
+            override fun onAnonymousSessionId(voiceboxView: VoiceboxView, sessionId: String) {
+                listener?.onAnonymousSessionId(voiceboxView, sessionId)
             }
         }
         return vb
