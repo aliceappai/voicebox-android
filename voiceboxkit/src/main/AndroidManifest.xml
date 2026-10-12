@@ -22,4 +22,21 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
+    <application>
+        <!--
+            Lends the camera app the file a photo taken from the recorder's file input is
+            saved to. Its own class and authority, so it merges alongside any FileProvider
+            the host app declares. No CAMERA permission: the photo is taken by the camera app.
+        -->
+        <provider
+            android:name="com.voicebox.voiceboxkit.VoiceboxFileProvider"
+            android:authorities="${applicationId}.voiceboxkit.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/voiceboxkit_file_paths" />
+        </provider>
+    </application>
+
 </manifest>

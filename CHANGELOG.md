@@ -7,6 +7,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- File attachments — a file input on the recorder page (`<input type="file">`, the "add file"
+  control) now opens the system file picker. A WebView opens nothing on its own, so the tap
+  did nothing before. The picker offers every type the input accepts, and an input that takes
+  images also offers the camera.
+- A `FileProvider` (`${applicationId}.voiceboxkit.fileprovider`) merged from the SDK manifest,
+  used to lend the camera app the file a photo is saved to. No `CAMERA` permission is declared
+  or requested.
+
+---
+
 ## [1.1.0] — 2026-09-17
 
 Session support, in parity with VoiceboxKit iOS 1.1.4.

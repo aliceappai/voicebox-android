@@ -3,11 +3,14 @@ package com.voicebox.voiceboxkit
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.util.Log
 import android.webkit.ConsoleMessage
 import android.webkit.GeolocationPermissions
 import android.webkit.PermissionRequest
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
+import android.webkit.WebView
 import androidx.core.content.ContextCompat
 
 /**
@@ -17,6 +20,7 @@ import androidx.core.content.ContextCompat
  * gated on the host app already holding the matching Android runtime
  * permission. Geolocation can additionally ask the fragment to request the OS
  * permission on demand when the visitor toggles "Share precise location".
+ * File inputs are handed to the fragment's [VoiceboxFileChooser].
  */
 internal class VoiceboxChromeClient(
     private val context: Context,
@@ -24,7 +28,19 @@ internal class VoiceboxChromeClient(
         origin: String?,
         callback: GeolocationPermissions.Callback?,
     ) -> Unit,
+    private val onFileChooserRequested: (
+        callback: ValueCallback<Array<Uri>>,
+        params: FileChooserParams,
+    ) -> Boolean,
 ) : WebChromeClient() {
+
+    // A WebView opens no picker of its own for <input type="file">; without this a tap
+    // on the recorder's "add file" does nothing.
+    override fun onShowFileChooser(
+        webView: WebView?,
+        filePathCallback: ValueCallback<Array<Uri>>,
+        fileChooserParams: FileChooserParams,
+    ): Boolean = onFileChooserRequested(filePathCallback, fileChooserParams)
 
     override fun onPermissionRequest(request: PermissionRequest) {
         // Android WebChromeClient has no "prompt" option — only grant or deny. Unlike iOS
