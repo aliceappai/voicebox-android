@@ -367,6 +367,25 @@ only after the visitor opts in. Host apps do not need to pre-request location.
 
 ---
 
+## File Attachments
+
+When the recorder page asks for a file (its **"add file"** control), the SDK opens
+the system file picker for the types the page accepts. If the page accepts
+images, **taking a photo** is offered alongside it.
+
+No host-app change is needed:
+
+- The SDK declares no `CAMERA` permission and never requests one — the photo is
+  taken by the device's camera app.
+- If *your* app declares `CAMERA`, Android only allows the camera hand-off once
+  the permission is granted, so the photo option appears only then. The file
+  picker is always available.
+- The SDK manifest adds a `FileProvider` with the authority
+  `${applicationId}.voiceboxkit.fileprovider`. It uses its own class, so it does
+  not conflict with a `FileProvider` your app already declares.
+
+---
+
 ## Auto-collected App Context
 
 When `VoiceboxKit.autoCollectAppContext` is `true` (default), the SDK appends

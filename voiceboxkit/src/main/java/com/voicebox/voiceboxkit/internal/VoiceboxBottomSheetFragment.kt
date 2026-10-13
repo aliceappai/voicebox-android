@@ -95,6 +95,16 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
         pendingGeoOrigin = null
     }
 
+    // The recorder page's <input type="file">: the picker (or camera) runs as an activity
+    // for a result, which comes back here.
+    private var fileChooser: VoiceboxFileChooser? = null
+
+    private val fileChooserLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        fileChooser?.onResult(result.resultCode, result.data)
+    }
+
     companion object {
         private const val TAG = "VoiceboxKit"
 
@@ -297,6 +307,9 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
         pendingGeoCallback?.invoke(pendingGeoOrigin, false, false)
         pendingGeoCallback = null
         pendingGeoOrigin = null
+        // Likewise an open file picker, before the page it would answer is destroyed.
+        fileChooser?.dispose()
+        fileChooser = null
         webView.stopLoading()
         webView.destroy()
         super.onDestroyView()
@@ -405,9 +418,12 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
             onError = ::onWebError,
         )
 
+        val chooser = VoiceboxFileChooser(requireContext()) { fileChooserLauncher.launch(it) }
+        fileChooser = chooser
         webView.webChromeClient = VoiceboxChromeClient(
             context = requireContext(),
             onGeolocationPermissionNeeded = ::requestLocationForGeolocation,
+            onFileChooserRequested = chooser::onShowFileChooser,
         )
 
         // Inject the webkit polyfill before any page scripts run, then the event

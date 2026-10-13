@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- cacheDir/voiceboxkit_capture — photos taken from the recorder's file input. -->
+    <cache-path name="voiceboxkit_capture" path="voiceboxkit_capture/" />
+</paths>
