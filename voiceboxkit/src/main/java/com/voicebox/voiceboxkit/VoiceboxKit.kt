@@ -15,7 +15,7 @@ import android.os.Looper
 object VoiceboxKit {
 
     /** SDK version string. */
-    const val VERSION = "1.1.0"
+    const val VERSION = "1.2.0"
 
     /** Base URL for Voicebox handles. Defaults to production (`https://vbx.to`). */
     var baseUrl: String = "https://vbx.to"
