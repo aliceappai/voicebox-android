@@ -49,6 +49,8 @@ android {
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    // Keeps the recorder's config across Activity recreation (VoiceboxPresentationViewModel).
+    implementation(libs.androidx.lifecycle.viewmodel)
     implementation(libs.androidx.webkit)
     // Material Components — needed for the View-side BottomSheetDialogFragment API.
     implementation(libs.material)
