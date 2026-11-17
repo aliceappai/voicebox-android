@@ -7,6 +7,24 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- The host app crashed when its Activity was recreated while the recorder was open — on
+  rotation, a dark-mode, font-size or locale change, or a multi-window resize. The recorder now
+  reopens on the new Activity (the page reloads, and recovers a recording in progress on its
+  own) and the listener set at presentation keeps receiving callbacks until it closes.
+- The host app also crashed when Android restored it after killing the process with the
+  recorder open — for example while the camera app was taking a photo for an attachment. The
+  recorder now closes quietly instead; there is no `onDismiss`, since the listener did not
+  survive the process either.
+- The SDK no longer writes its own wrapper into `VoiceboxView.listener`. Presenting the same
+  `VoiceboxView` again used to stack wrappers, and the listener you read back was not the one
+  you set.
+
+---
+
 ## [1.2.0] — 2026-10-13
 
 ### Added

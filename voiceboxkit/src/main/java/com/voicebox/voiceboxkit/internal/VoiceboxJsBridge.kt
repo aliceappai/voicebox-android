@@ -22,6 +22,12 @@ internal class VoiceboxJsBridge(
     private val mainHandler: Handler,
     /** Page-initiated dismiss — the floating card's tap outside the card (no × shown). */
     private val onDismissRequest: () -> Unit = {},
+    /**
+     * Who hears the page's events. The fragment passes its own auto-dismiss wrapper here rather
+     * than writing it into [VoiceboxView.listener], which belongs to the host and outlives the
+     * fragment (see `VoiceboxBottomSheetFragment.sessionListener`).
+     */
+    private val eventListener: () -> VoiceboxListener? = { voiceboxView.listener },
 ) {
     @JavascriptInterface
     fun onMessage(handlerName: String, payload: String) {
@@ -57,7 +63,7 @@ internal class VoiceboxJsBridge(
         if (sessionId.isEmpty()) return false
         if (sessionId == deliveredSessionId) return false
 
-        val listener = voiceboxView.listener ?: return false
+        val listener = eventListener() ?: return false
 
         deliveredSessionId = sessionId
         listener.onAnonymousSessionId(voiceboxView, sessionId)
@@ -80,7 +86,7 @@ internal class VoiceboxJsBridge(
             onDismissRequest()
             return
         }
-        val listener = voiceboxView.listener ?: return
+        val listener = eventListener() ?: return
         when (type) {
             "recordingComplete" -> listener.onRecordingComplete(voiceboxView)
             "messageSubmitted" -> listener.onMessageSubmitted(voiceboxView)

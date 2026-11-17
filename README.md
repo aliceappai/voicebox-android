@@ -263,6 +263,13 @@ vb.present(this)
 
 All methods have default empty implementations — override only the ones you need.
 
+If your Activity is recreated while the recorder is open (rotation, dark mode, font size,
+locale, multi-window resize), the recorder reopens and the page reloads; a recording in
+progress is recovered by the page. The listener set when you presented keeps receiving
+callbacks, `onDismiss` included, until the recorder closes — so a listener that captures the
+old Activity keeps it alive until then. If Android kills your process while the recorder is
+open, the restored app does not show it again and no callback is made.
+
 ### Compose
 
 ```kotlin

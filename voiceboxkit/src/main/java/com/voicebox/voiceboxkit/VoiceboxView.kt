@@ -36,7 +36,15 @@ class VoiceboxView(
      */
     var entranceAnimation: Set<VoiceboxEntranceAnimation> = VoiceboxEntranceAnimation.ALL
 
-    /** Listener for lifecycle events (recording complete, dismiss, error). */
+    /**
+     * Listener for lifecycle events (recording complete, dismiss, error).
+     *
+     * If the host Activity is recreated while the recorder is open (rotation, dark mode, font
+     * size, locale, multi-window resize), the recorder reopens on the new Activity and keeps
+     * calling this listener until it closes, `onDismiss` included. A listener that captures the
+     * old Activity keeps it alive until then. If the process is killed while the recorder is
+     * open, the restored app does not show it again and no callback is made.
+     */
     var listener: VoiceboxListener? = null
 
     /**

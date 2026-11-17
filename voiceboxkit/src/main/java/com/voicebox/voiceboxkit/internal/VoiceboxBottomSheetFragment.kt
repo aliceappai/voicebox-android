@@ -31,6 +31,7 @@ import androidx.coordinatorlayout.widget.CoordinatorLayout
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.ViewModelProvider
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import com.google.android.material.bottomsheet.BottomSheetBehavior
@@ -47,7 +48,30 @@ import com.google.android.material.bottomsheet.BottomSheetBehavior
  */
 internal class VoiceboxBottomSheetFragment : Fragment() {
 
+    /**
+     * Set by [show] on a new fragment and moved into [VoiceboxPresentationViewModel] in
+     * [onCreate]. A fragment FragmentManager rebuilt never has it.
+     */
+    private var configFromShow: VoiceboxView? = null
+
+    /**
+     * The presentation's config, read from [VoiceboxPresentationViewModel] in [onCreate]. Never
+     * set on a fragment restored after process death — check [hasConfig] before any path that
+     * can run on one ([onCreateView], [onDestroyView], [dismiss]).
+     */
     internal lateinit var voiceboxConfig: VoiceboxView
+        private set
+
+    private val hasConfig: Boolean
+        get() = ::voiceboxConfig.isInitialized
+
+    /**
+     * The host's listener plus the auto-dismiss on submit, for this fragment instance only.
+     * Kept here rather than written into [VoiceboxView.listener]: the [VoiceboxView] belongs to
+     * the host and outlives this fragment (across a config change, and across presentations),
+     * so writing it there let a dead fragment's [dismiss] be called and kept it alive.
+     */
+    private var sessionListener: VoiceboxListener? = null
 
     private lateinit var webView: WebView
     private var jsBridge: VoiceboxJsBridge? = null
@@ -117,7 +141,7 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
         internal fun show(activity: FragmentActivity, voiceboxView: VoiceboxView) {
             if (activity.supportFragmentManager.findFragmentByTag(TAG) != null) return
             VoiceboxBottomSheetFragment().also {
-                it.voiceboxConfig = voiceboxView
+                it.configFromShow = voiceboxView
             }.let { fragment ->
                 activity.supportFragmentManager
                     .beginTransaction()
@@ -133,24 +157,33 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
         internal fun autoDismissListener(
             upstream: VoiceboxListener?,
             onSubmitted: () -> Unit,
+        ): VoiceboxListener = autoDismissListener({ upstream }, onSubmitted)
+
+        /**
+         * As above, reading the upstream listener at each callback, so a listener the host sets
+         * after presenting is the one called.
+         */
+        internal fun autoDismissListener(
+            upstream: () -> VoiceboxListener?,
+            onSubmitted: () -> Unit,
         ): VoiceboxListener = object : VoiceboxListener {
             override fun onRecordingComplete(voiceboxView: VoiceboxView) {
-                upstream?.onRecordingComplete(voiceboxView)
+                upstream()?.onRecordingComplete(voiceboxView)
             }
             override fun onMessageSubmitted(voiceboxView: VoiceboxView) {
-                upstream?.onMessageSubmitted(voiceboxView)
+                upstream()?.onMessageSubmitted(voiceboxView)
                 onSubmitted()
             }
             override fun onDismiss(voiceboxView: VoiceboxView) {
-                upstream?.onDismiss(voiceboxView)
+                upstream()?.onDismiss(voiceboxView)
             }
             override fun onFailure(voiceboxView: VoiceboxView, error: Exception) {
-                upstream?.onFailure(voiceboxView, error)
+                upstream()?.onFailure(voiceboxView, error)
             }
             // Must be forwarded explicitly: an unlisted callback falls through to the
             // interface's empty default and the host silently never hears it.
             override fun onAnonymousSessionId(voiceboxView: VoiceboxView, sessionId: String) {
-                upstream?.onAnonymousSessionId(voiceboxView, sessionId)
+                upstream()?.onAnonymousSessionId(voiceboxView, sessionId)
             }
         }
     }
@@ -170,11 +203,33 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
 
     // MARK: - Fragment lifecycle
 
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val presentation = ViewModelProvider(this)[VoiceboxPresentationViewModel::class.java]
+        configFromShow?.let { presentation.voiceboxView = it }
+        configFromShow = null
+        val config = presentation.voiceboxView
+        if (config == null) {
+            // Restored after process death: the config (and the host callbacks in it) did not
+            // survive, so there is no recorder to rebuild. Close instead of crashing. No
+            // onDismiss: the listener it would go to died with the process. The removal runs
+            // after the restore finishes, so the view callbacks below still run once and must
+            // tolerate a fragment without a config.
+            VoiceboxLog.d("Recorder restored without its config (process death); closing")
+            backCallback.isEnabled = false
+            removeSelf()
+            return
+        }
+        voiceboxConfig = config
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?,
-    ): View {
+    ): View? {
+        // No view, so onViewCreated is skipped too.
+        if (!hasConfig) return null
         val ctx = requireContext()
 
         // Root: full-screen CoordinatorLayout — transparent so the Activity shows through
@@ -303,6 +358,10 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
     }
 
     override fun onDestroyView() {
+        if (!::webView.isInitialized) {
+            super.onDestroyView()
+            return
+        }
         // Deny any in-flight geolocation prompt so Chromium isn't left waiting.
         pendingGeoCallback?.invoke(pendingGeoOrigin, false, false)
         pendingGeoCallback = null
@@ -318,14 +377,19 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
     // Wraps the caller's listener so the sheet auto-dismisses after onMessageSubmitted,
     // mirroring iOS VoiceboxViewController which calls dismiss(animated:) on submit.
     // Covers both the JS bridge path (VoiceboxJsBridge) and the /sent/ URL fallback
-    // (VoiceboxWebViewClient) because both route through voiceboxConfig.listener.
+    // (VoiceboxWebViewClient) because both route through sessionListener. Runs before
+    // the page can post anything (setupWebView only registers; loading starts after).
     private fun wrapListenerForAutoDismiss() {
-        voiceboxConfig.listener = autoDismissListener(voiceboxConfig.listener, ::dismiss)
+        sessionListener = autoDismissListener({ voiceboxConfig.listener }, ::dismiss)
     }
 
     // MARK: - Dismiss
 
     internal fun dismiss() {
+        if (!hasConfig) {
+            removeSelf()
+            return
+        }
         if (isFloatingCard) {
             if (cardDismissing) return
             cardDismissing = true
@@ -341,6 +405,11 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
         if (dismissDispatched) return
         dismissDispatched = true
         voiceboxConfig.listener?.onDismiss(voiceboxConfig)
+        removeSelf()
+    }
+
+    private fun removeSelf() {
+        if (!isAdded) return
         parentFragmentManager.beginTransaction()
             .remove(this)
             .commitAllowingStateLoss()
@@ -408,6 +477,7 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
             onContentHeight = ::handleContentHeight,
             mainHandler = mainHandler,
             onDismissRequest = ::dismiss,
+            eventListener = { sessionListener },
         )
         jsBridge = bridge
         webView.addJavascriptInterface(bridge, "VoiceboxBridge")
@@ -416,6 +486,7 @@ internal class VoiceboxBottomSheetFragment : Fragment() {
             voiceboxView = voiceboxConfig,
             onPageFinished = ::onWebPageFinished,
             onError = ::onWebError,
+            eventListener = { sessionListener },
         )
 
         val chooser = VoiceboxFileChooser(requireContext()) { fileChooserLauncher.launch(it) }

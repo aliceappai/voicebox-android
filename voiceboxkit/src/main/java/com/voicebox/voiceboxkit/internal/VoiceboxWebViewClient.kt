@@ -14,6 +14,8 @@ internal class VoiceboxWebViewClient(
     private val voiceboxView: VoiceboxView,
     private val onPageFinished: () -> Unit,
     private val onError: () -> Unit,
+    /** Who hears the `/sent/` fallback. See [VoiceboxJsBridge]'s `eventListener`. */
+    private val eventListener: () -> VoiceboxListener? = { voiceboxView.listener },
 ) : WebViewClient() {
 
     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
@@ -24,7 +26,7 @@ internal class VoiceboxWebViewClient(
         // /sent/ URL path is a fallback signal for messageSubmitted (mirrors iOS nav delegate)
         if (uri.path?.contains("/sent/") == true) {
             VoiceboxLog.d("Message submitted via /sent/ path")
-            voiceboxView.listener?.onMessageSubmitted(voiceboxView)
+            eventListener()?.onMessageSubmitted(voiceboxView)
         }
 
         // Allow navigation only to trusted hosts; block everything else
