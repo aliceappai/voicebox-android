@@ -24,6 +24,18 @@ import java.time.Duration
 @Config(sdk = [28])
 class RecreationTest {
 
+    /**
+     * A host with a Material theme, set before super.onCreate so it is reapplied on every
+     * recreation. The SDK's own views (VoiceboxOfflineView's MaterialButton, the bottom sheet)
+     * require a Theme.MaterialComponents descendant, as any real host app has.
+     */
+    class ThemedActivity : FragmentActivity() {
+        override fun onCreate(savedInstanceState: Bundle?) {
+            setTheme(com.google.android.material.R.style.Theme_MaterialComponents_DayNight_NoActionBar)
+            super.onCreate(savedInstanceState)
+        }
+    }
+
     private class RecordingListener : VoiceboxListener {
         var dismissed = 0
         override fun onDismiss(voiceboxView: VoiceboxView) {
@@ -38,14 +50,14 @@ class RecreationTest {
 
     private fun idleMain() = shadowOf(Looper.getMainLooper()).idle()
 
-    private fun launch(): ActivityController<FragmentActivity> =
-        Robolectric.buildActivity(FragmentActivity::class.java).setup()
+    private fun launch(): ActivityController<ThemedActivity> =
+        Robolectric.buildActivity(ThemedActivity::class.java).setup()
 
-    private fun recorder(controller: ActivityController<FragmentActivity>): VoiceboxBottomSheetFragment? =
+    private fun recorder(controller: ActivityController<ThemedActivity>): VoiceboxBottomSheetFragment? =
         controller.get().supportFragmentManager.findFragmentByTag("VoiceboxKit") as VoiceboxBottomSheetFragment?
 
     private fun present(
-        controller: ActivityController<FragmentActivity>,
+        controller: ActivityController<ThemedActivity>,
         mode: VoiceboxPresentationMode = VoiceboxPresentationMode.BottomSheet,
     ): VoiceboxView {
         val view = VoiceboxView(handle = "test").apply { presentationMode = mode }
@@ -144,7 +156,7 @@ class RecreationTest {
 
         // A new Activity from the saved state, without the old one's ViewModels: what Android
         // does when it brings the app back after killing the process.
-        val restored = Robolectric.buildActivity(FragmentActivity::class.java).setup(savedState)
+        val restored = Robolectric.buildActivity(ThemedActivity::class.java).setup(savedState)
         idleMain()
 
         assertNull(recorder(restored))
